@@ -1,4 +1,4 @@
-function [Phi_Phi,Phi_F,Phi_R,A_e, B_e,C_e]=mpcgain(Ap,Bp,Cp,Nc,Np);
+function [Phi_Phi,Phi_F,Phi_R,A_e, B_e,C_e,F,Phi]=mpcgain(Ap,Bp,Cp,Nc,Np);
 % This function computes the following matrices:
 % Phi is a toeplitz matrix
 % where Phi_Phi,Phi_F,Phi_R are for helping calculations for delta U

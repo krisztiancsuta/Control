@@ -1,3 +1,16 @@
+
+%% Constraints types
+% rate of change of the control variables (Δu(k))
+%   Δu(k)min <= Δu(k)<= Δu(k)max
+%   we use it where the rate of change is limited
+
+% Constraints on the Amplitude of the Control Variable
+% u(k)min <= u(k)<= u(k)max
+% These are the physical hard constraints on the system.
+% we need to pay particular attention to the fact that u(k) is an incre-
+% mental variable, not the actual physical variable.
+% The actual physical control
+% variable equals the incremental variable u plus its steady-state value uss.
 %% DYNAMIC MODEL IN TERMS OF ERROR WITH RESPECT TO ROAD
 R = 1000;  % radious of the road
 Caf = 80000; % Cornering stiffnes az első kerékhez
@@ -34,12 +47,12 @@ Cp = d_ss.C;
 
 Nc = 4;
 Np = 20;
-rw = 2;
+rw = 0.1;
 
 %% Finding optimal solution for delta U
 % Using function for calculating following matrices:
 % Phi_Phi,Phi_F,Phi_R,A_e, B_e,C_e
-[Phi_Phi,Phi_F,Phi_R,A_e, B_e,C_e]=mpcgain(Ap,Bp,Cp,Nc,Np);
+[Phi_Phi,Phi_F,Phi_R,A_e, B_e,C_e,F,Phi]=mpcgain(Ap,Bp,Cp,Nc,Np);
 % ΔU = inv((Φ'Φ+ R))(Φ'*Rs− Φ'*F*x(ki)) 
 
 %% Receding Horizon control
@@ -73,14 +86,67 @@ Ky = Kmpc(:, end-m1+1:end);
 Acl = A_e - B_e * Kmpc;
 lambda=eig(Acl);
 
+
+
+%% Constraints
+% deltau vector called as decision variable
+% Δumin <= Δu(ki)<= Δumax
+% u(ki) = u(ki-1) + Δu(ki) = u(ki-1) + [1 0 ... 0]ΔU
+% u(ki + 1) = u(ki) + Δu(ki + 1) = u(ki) + [0 1... 0]ΔU
+% u(ki + 1) = u(ki-1) + [1 1 ... 0]ΔU
+% U = C1*u(ki-1) + C2*ΔU
+% These matrices can handle MIMO systems
+% Steady state steering angle is 0;
+u_max = pi/4; % Max steering angle
+u_min = -pi/4; % Min steering angle
+
+Umax = ones(Nc, 1) * u_max;
+Umin = ones(Nc, 1) * (u_min);
+
+du_max = 0.2; % Max rate of steering angle change
+du_min = -0.2; % Min rate of steering angle change
+
+dUmax = ones(Nc, 1) * du_max;
+dUmin = ones(Nc, 1) * (du_min);
+
+% Kimeneti korlátok definiálása (ha az út széle pl. +/- 1 méter)
+Ymax = ones(Np, 1) * 1; 
+Ymin = ones(Np, 1) * -1;
+
+I_n_in = eye(n_in);
+C1 = repmat(I_n_in, Nc, 1);
+C2 = kron(tril(ones(Nc)), I_n_in);
+
+% The 3 contstraints enaquility can be described as:
+M1 = [-C2;C2];
+M2 = [-eye(Nc*n_in); eye(Nc*n_in)];
+M3 = [-Phi;Phi];
+M= [M1;M2;M3];
+% M*ΔU <= gamma
 %% Receding Horizon Control Loop
 % We define R outside the loop as it is constant in this case
 for kk = 1:N_sim
+ 
+    N1 = [-Umin + C1*u;... 
+           Umax - C1*u];
+    N2 = [-dUmin;dUmax];
+    N3 = [-Ymin + F*Xf;... 
+           Ymax - F*Xf];
+    
+    gamma = [N1;N2;N3];
+
     % 1. Calculate the optimal control sequence (Delta U)
     % deltaU sequence for the entire control horizon
     % We use the current setpoint r(kk) to scale Phi_R
-    deltaU = (Phi_Phi + R) \ (Phi_R * r(kk) - Phi_F * Xf);
+    deltaU_unconstrained = (Phi_Phi + R) \ (Phi_R * r(kk) - Phi_F * Xf);
     
+
+    H = (Phi_Phi + R);
+    f = -(Phi_R * r(kk) - Phi_F * Xf);
+
+    deltaU = QPhild(H, f, M, gamma);
+   
+
     % 2. Receding Horizon principle: Apply ONLY the first control move
     delta_u_k = deltaU(1:n_in);
     
