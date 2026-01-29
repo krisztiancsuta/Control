@@ -38,16 +38,16 @@ c_ss = ss(A,B,C,0);
 % Extend model with disturbance 
 
 %% Discretise state space model
-Ts = 0.01; % 10 ms sampling time
+Ts = 0.05; % 10 ms sampling time
 d_ss = c2d(c_ss,Ts);
 
 Ap = d_ss.A;
 Bp = d_ss.B;
 Cp = d_ss.C;
 
-Nc = 4;
-Np = 20;
-rw = 0.1;
+Nc = 200;
+Np = 400;
+rw = 0.01;
 
 %% Finding optimal solution for delta U
 % Using function for calculating following matrices:
@@ -63,17 +63,21 @@ N_sim = 100; % Simulation steps
 [m1, n1] = size(Cp);
 [n, n_in] = size(Bp);
 
-xm = [0.5; 0; 0.1; 0]; % Initial state: 0.5m lateral error, 0.1 rad yaw error
+xm = [0; 0; 0; 0]; % Initial state
 y = Cp * xm;  
 u = 0;  % Initial control signal (u(k-1))
 
 % The augmented state vector: x_e = [delta_xm; y]
 % delta_xm = xm(k) - xm(k-1). Since k=0, assume delta_xm = 0
 Xf = zeros(n1 + m1, 1); 
+%% Sawtooth signal as reference
+period = 40;       % Hány lépés alatt érjen körbe egy teljes háromszög ciklus
+amplitude = 1;   % A háromszög csúcsértéke (méterben)
 
-r = ones(N_sim,1); % Set point vector
+t_vec = (0:N_sim-1)';
+r = amplitude * (2/pi) * asin(sin(2*pi*t_vec/period));
 
-% For plotting
+%% For plotting
 Y = zeros(N_sim, m1);
 U = zeros(N_sim, n_in);
 delta_x = zeros(N_sim, n1);
@@ -103,15 +107,15 @@ u_min = -pi/4; % Min steering angle
 Umax = ones(Nc, 1) * u_max;
 Umin = ones(Nc, 1) * (u_min);
 
-du_max = 0.2; % Max rate of steering angle change
-du_min = -0.2; % Min rate of steering angle change
+du_max = 0.1; % Max rate of steering angle change
+du_min = -0.1; % Min rate of steering angle change
 
 dUmax = ones(Nc, 1) * du_max;
 dUmin = ones(Nc, 1) * (du_min);
 
-% Kimeneti korlátok definiálása (ha az út széle pl. +/- 2 méter)
+% Kimeneti korlátok definiálása (ha az út széle pl. +/- 1 méter)
 Ymax = ones(Np, 1) * 1; 
-Ymin = ones(Np, 1) * -;
+Ymin = ones(Np, 1) * -1;
 
 I_n_in = eye(n_in);
 C1 = repmat(I_n_in, Nc, 1);
@@ -120,24 +124,20 @@ C2 = kron(tril(ones(Nc)), I_n_in);
 % The 3 contstraints enaquility can be described as:
 M1 = [-C2;C2];
 M2 = [-eye(Nc*n_in); eye(Nc*n_in)];
-M3 = [-Phi;Phi];
-M= [M1;M2;M3]
+%M3 = [-Phi;Phi];
+M= [M1;M2];
 % M*ΔU <= gamma
 %% Receding Horizon Control Loop
 % We define R outside the loop as it is constant in this case
 for kk = 1:N_sim
-    
-   
-
+ 
     N1 = [-Umin + C1*u;... 
            Umax - C1*u];
     N2 = [-dUmin;dUmax];
-    N3 = [-Ymin + F*Xf;... 
-           Ymax - F*Xf];
+    %N3 = [-Ymin + F*Xf;... 
+           %Ymax - F*Xf];
     
-    gamma = [N1;N2;N3];
-
-
+    gamma = [N1;N2];
 
     % 1. Calculate the optimal control sequence (Delta U)
     % deltaU sequence for the entire control horizon

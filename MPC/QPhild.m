@@ -20,7 +20,7 @@ d=(A_cons*(H\f)+b);
 x_ini=zeros(n,m);
 lambda=x_ini;
 al=10;
-for km=1:38
+for km=1:200
 %find the elements in the solution vector one by one
 % km could be larger if the Lagranger multiplier has a slow
 % convergence rate.

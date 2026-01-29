@@ -38,15 +38,15 @@ c_ss = ss(A,B,C,0);
 % Extend model with disturbance 
 
 %% Discretise state space model
-Ts = 0.01; % 10 ms sampling time
+Ts = 0.033; % 33 ms sampling time
 d_ss = c2d(c_ss,Ts);
 
 Ap = d_ss.A;
 Bp = d_ss.B;
 Cp = d_ss.C;
 
-Nc = 4;
-Np = 20;
+Nc = 40;% Control Horizon up to 1320ms 
+Np = 66;% Prediction Horizon up to 2178ms 
 rw = 0.1;
 
 %% Finding optimal solution for delta U
@@ -63,17 +63,21 @@ N_sim = 100; % Simulation steps
 [m1, n1] = size(Cp);
 [n, n_in] = size(Bp);
 
-xm = [0.5; 0; 0.1; 0]; % Initial state: 0.5m lateral error, 0.1 rad yaw error
+xm = [0; 0; 0; 0]; % Initial state
 y = Cp * xm;  
 u = 0;  % Initial control signal (u(k-1))
 
 % The augmented state vector: x_e = [delta_xm; y]
 % delta_xm = xm(k) - xm(k-1). Since k=0, assume delta_xm = 0
 Xf = zeros(n1 + m1, 1); 
+%% Sawtooth signal as reference
+period = 40;       % Hány lépés alatt érjen körbe egy teljes háromszög ciklus
+amplitude = 0.5;   % A háromszög csúcsértéke (méterben)
 
-r = ones(N_sim,1); % Set point vector
+t_vec = (0:N_sim-1)';
+r = amplitude * (2/pi) * asin(sin(2*pi*t_vec/period));
 
-% For plotting
+%% For plotting
 Y = zeros(N_sim, m1);
 U = zeros(N_sim, n_in);
 delta_x = zeros(N_sim, n1);
@@ -103,15 +107,15 @@ u_min = -pi/4; % Min steering angle
 Umax = ones(Nc, 1) * u_max;
 Umin = ones(Nc, 1) * (u_min);
 
-du_max = 0.2; % Max rate of steering angle change
-du_min = -0.2; % Min rate of steering angle change
+du_max = 0.05; % Max rate of steering angle change
+du_min = -0.05; % Min rate of steering angle change
 
 dUmax = ones(Nc, 1) * du_max;
 dUmin = ones(Nc, 1) * (du_min);
 
 % Kimeneti korlátok definiálása (ha az út széle pl. +/- 1 méter)
-Ymax = ones(Np, 1) * 1; 
-Ymin = ones(Np, 1) * -1;
+Ymax = ones(Np, 1) * 4; 
+Ymin = ones(Np, 1) * -4;
 
 I_n_in = eye(n_in);
 C1 = repmat(I_n_in, Nc, 1);
@@ -123,6 +127,8 @@ M2 = [-eye(Nc*n_in); eye(Nc*n_in)];
 M3 = [-Phi;Phi];
 M= [M1;M2;M3];
 % M*ΔU <= gamma
+
+DU = zeros(N_sim, n_in); % Storing dU values 
 %% Receding Horizon Control Loop
 % We define R outside the loop as it is constant in this case
 for kk = 1:N_sim
@@ -149,6 +155,7 @@ for kk = 1:N_sim
 
     % 2. Receding Horizon principle: Apply ONLY the first control move
     delta_u_k = deltaU(1:n_in);
+    DU(kk, :) = delta_u_k;
     
     % 3. Update the actual control signal: u(k) = u(k-1) + delta_u(k)
     u = u + delta_u_k;
@@ -169,60 +176,44 @@ for kk = 1:N_sim
     delta_x(kk,:) = xm - xm_old;
 end
 
-%% Plotting Results (Kibővített Analízis Pólusokkal)
+%% Plotting Results (Javított számozással)
 k = 0:(N_sim-1);
-figure('Name', 'MPC Járműdinamika Részletes Analízis'); 
+figure('Name', 'MPC Járműdinamika Analízis Korlátokkal'); 
 
-% 1. ábra: Beavatkozó jel (u)
-subplot(5,2,[1,2])
+% 1. ábra: Beavatkozó jel (u) - 2 oszlop széles
+subplot(6,2,[1,2])
 stairs(k, U, 'k', 'LineWidth', 1.5) 
-grid on;
-ylabel('\delta_f [rad]')
-title('Optimális kormányszög')
-
-% 2. ábra: Kimenet (y) és Referencia
-subplot(5,2,[3,4])
-plot(k, Y, 'b-', 'LineWidth', 2)
 hold on;
-plot(k, r, 'r--', 'LineWidth', 1)
-grid on;
-ylabel('y [m]')
-title('Oldalirányú pozícióhiba (y)')
-legend('Kimenet', 'Referencia', 'Location', 'northeast')
+plot(k, ones(size(k))*u_max, 'r--', 'LineWidth', 1);
+plot(k, ones(size(k))*u_min, 'r--', 'LineWidth', 1);
+grid on; ylabel('\delta_f [rad]'); title('Optimális kormányszög (u) és korlátok');
+legend('u', 'u_{max/min}');
 
-% --- ÚJ RÉSZ: Zárt körű sajátértékek (Pólusok) megjelenítése ---
-subplot(5,2,[5,6])
-% Egységkör megrajzolása
-th = 0:pi/50:2*pi;
-plot(cos(th), sin(th), 'k--', 'LineWidth', 0.5); hold on;
-% Pólusok ábrázolása
+% 2. ábra: Kimenet (y) és Referencia (Háromszögjel)
+subplot(6,2,[3,4])
+plot(k, Y, 'b-', 'LineWidth', 2); hold on;
+plot(k, r, 'r--', 'LineWidth', 1);
+grid on; ylabel('y [m]'); title('Pályakövetés (Háromszög referencia)');
+legend('Kimenet', 'Referencia');
+
+% 3. ábra: Delta U diagram (Itt már nem lesz felülírva)
+subplot(6,2,[5,6]) % 2 oszlop szélesre vettem, hogy jól látszódjon a dinamika
+stairs(k, DU, 'b', 'LineWidth', 1.2); hold on;
+plot(k, ones(size(k))*du_max, 'r:', 'LineWidth', 1.5);
+plot(k, ones(size(k))*du_min, 'r:', 'LineWidth', 1.5);
+grid on; ylabel('\Delta u'); title('\Delta u: Kormányszög sebesség és korlátai');
+legend('\Delta u', 'du_{max/min}');
+
+% 4. ábra: Zárt körű sajátértékek (Stabilitás)
+subplot(6,2,[7,8])
+th = 0:pi/50:2*pi; plot(cos(th), sin(th), 'k--'); hold on;
 plot(real(lambda), imag(lambda), 'rx', 'MarkerSize', 10, 'LineWidth', 2);
-grid on;
-axis equal;
-xlabel('Valós rész'); ylabel('Képzetes rész');
-title('Zárt körű sajátértékek (Pólusok) az egységkörön');
-legend('Egységkör', 'Pólusok', 'Location', 'northeast');
+grid on; axis equal; title('Pólusok az egységkörön');
 
-% --- ALSÓ RÉSZ: Delta X értékek ---
-% Delta y
-subplot(5,2,7)
-plot(k, delta_x(:,1), 'g', 'LineWidth', 1.2)
-grid on; ylabel('\Delta y'); title('\Delta x_1: Pozíció vált.')
+% 5. ábra: Állapotváltozók növekményei (Delta X)
+subplot(6,2,9); plot(k, delta_x(:,1), 'g'); grid on; title('\Delta y');
+subplot(6,2,10); plot(k, delta_x(:,2), 'm'); grid on; title('\Delta dy');
+subplot(6,2,11); plot(k, delta_x(:,3), 'c'); grid on; title('\Delta \psi');
+subplot(6,2,12); plot(k, delta_x(:,4), 'r'); grid on; title('\Delta d\psi');
 
-% Delta dy
-subplot(5,2,8)
-plot(k, delta_x(:,2), 'm', 'LineWidth', 1.2)
-grid on; ylabel('\Delta dy'); title('\Delta x_2: Oldalir. seb. vált.')
-
-% Delta psi
-subplot(5,2,9)
-plot(k, delta_x(:,3), 'c', 'LineWidth', 1.2)
-grid on; ylabel('\Delta \psi'); title('\Delta x_3: Irányszög vált.')
-
-% Delta dpsi
-subplot(5,2,10)
-plot(k, delta_x(:,4), 'r', 'LineWidth', 1.2)
-grid on; ylabel('\Delta d\psi'); title('\Delta x_4: Legyezési seb. vált.')
-
-sgtitle('MPC Járműirányítás - Állapotok, Növekmények és Stabilitás');
-set(gcf, 'Units', 'Normalized', 'OuterPosition', [0.1, 0.05, 0.6, 0.95]);
+sgtitle('MPC Járműirányítás - Szabályos háromszögjel követése');
