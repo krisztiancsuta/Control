@@ -124,13 +124,13 @@ legend('Aktuális hiba');
 
 % 3. részábra: e2 orientációs hiba
 subplot(4,1,3);
-plot(t, rad2deg(e2), 'r', 'LineWidth', 1.5); % Átváltva fokba a jobb olvashatóságért
-grid on; ylabel('e_2 [deg]');
+plot(t, e2, 'r', 'LineWidth', 1.5); % Átváltva fokba a jobb olvashatóságért
+grid on; ylabel('e_2 [rad]');
 title('Orientációs hiba (Szögeltérés az úthoz képest)');
 
 % 4. részábra: Kormányszög
 subplot(4,1,4);
-plot(t, rad2deg(u_total), 'g', 'LineWidth', 1.5);
-grid on; xlabel('Idő [s]'); ylabel('\delta [deg]');
+plot(t, u_total, 'g', 'LineWidth', 1.5);
+grid on; xlabel('Idő [s]'); ylabel('\delta [rad]');
 title('Beavatkozó jel (Első kerék kormányszög)');
 legend('\delta_{total}');
