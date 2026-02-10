@@ -16,7 +16,7 @@
 
 
 %% Jelkövető szabályzó struktúra módosítással
-R = 50;  % radious of the road
+R = 24;  % radious of the road
 Caf = 222685.8 / 2; % Cornering stiffnes az első kerékhez
 Car = 136242.8 / 2; % Cornering stiffnes a hátsó kerékhez
 lf = 1236e-3; % Az autó tömegközéppontjától mért elülső tengelytáv
@@ -67,18 +67,18 @@ isControllable = (size(A,1) == rank(ctrb(A,B1)));
 A_ext = [A, zeros(4, 1);... 
         -C, 0];
 B_ext = [B1;...
-         0 ];
+         0];
 
 Q = diag([4 0.1 1 0.01 60]);
-r = 1;
+r = 0.01;
 K = lqr(A_ext,B_ext,Q,r);
 
 %% Állapotvisszacsatolás
 
 Acl = [(A-B1*K(1:4)) -B1*K(5);...
        -C       0];
-Bcl = [B2;...
-       0];
+Bcl = [B2 zeros(4,1);...
+       0 1];
 
 Ccl = [1 0 0 0 0;  % e1
        0 0 1 0 0]; % e2
@@ -92,8 +92,15 @@ max_yaw_rate = Vx / R;
 % A bemeneti jel kiszámítása (Desired Yaw Rate)
 % Ez hat a B2 mátrixon keresztül a rendszerre
 vphides_t = generate8likePath(t,max_yaw_rate);
+% u_reference = gensig("sin",5,30,0.01);
+u_reference = zeros(size(t));
+
+u_sim = [vphides_t' , u_reference'];
 % Szimuláció a kanyarodási sebességgel mint bemenettel
-[y_out, t_out, x_states] = lsim(sys_cl, vphides_t, t);
+[y_out, t_out, x_states] = lsim(sys_cl, u_sim, t);
+
+% Az LQR_Jelkovetes.m végére:
+drawpath(t_out, x_states, Vx, vphides_t);
 
 e1 = y_out(:,1);
 e2 = y_out(:,2);
