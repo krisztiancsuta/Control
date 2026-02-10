@@ -85,21 +85,20 @@ Ccl = [1 0 0 0 0;  % e1
 
 sys_cl = ss(Acl,Bcl,Ccl,0);
 %% 4. SZIMULÁCIÓ IDŐBEN VÁLTOZÓ PÁLYAPROFILLAL
-% Idővektor (0-tól 30 másodpercig, hogy minden szakasz ráférjen)
 t = 0:0.01:30;
 
 max_yaw_rate = Vx / R;
 % A bemeneti jel kiszámítása (Desired Yaw Rate)
-% Ez hat a B2 mátrixon keresztül a rendszerre
+
 vphides_t = generate8likePath(t,max_yaw_rate);
 % u_reference = gensig("sin",5,30,0.01);
-u_reference = zeros(size(t));
+u_reference = zeros(size(t)); % Nulla hiba referencia!!!
 
 u_sim = [vphides_t' , u_reference'];
 % Szimuláció a kanyarodási sebességgel mint bemenettel
 [y_out, t_out, x_states] = lsim(sys_cl, u_sim, t);
 
-% Az LQR_Jelkovetes.m végére:
+% Aktualis palya kirajzolasa globalis koordinatarendszerben
 drawpath(t_out, x_states, Vx, vphides_t);
 
 e1 = y_out(:,1);
