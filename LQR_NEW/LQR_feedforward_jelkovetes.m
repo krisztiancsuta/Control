@@ -1,5 +1,5 @@
 %% DYNAMIC MODEL IN TERMS OF ERROR WITH RESPECT TO ROAD
-R = 50;  % radious of the road
+R = 24;  % radious of the road
 Caf = 222685.8 / 2; % Cornering stiffnes az első kerékhez
 Car = 136242.8 / 2; % Cornering stiffnes a hátsó kerékhez
 lf = 1236e-3; % Az autó tömegközéppontjától mért elülső tengelytáv
@@ -7,7 +7,6 @@ lr = 2789e-3 - lf; % Az autó tömegközéppontjától mért hátsó tengelytáv
 m = 2300; % Az autó tömege
 Vx = 10; % Az autó haladási sebessége a saját koordinátarendszerében
 Iz = 2873; % Az autó tehetetlenségi nyomatéka
-vphides = Vx / R;
 % Az állapotvektorunk e1, e1', e2, e2' == 
 % laterális pozíciócióhiba a sávközéptől,
 % laterális pozíciócióhiba sebessége,
@@ -50,7 +49,7 @@ A_ext = [A, zeros(4, 1);...
 B_ext = [B1;...
          0]; % A zavarás mint bemenet jelenik meg a rendszerben
 
-Q = diag([4 0.1 1 0.01 60]);
+Q = diag([4 0.01 1 0.01 60]);
 r = 1;
 
 K = lqr(A_ext,B_ext,Q,r);
@@ -75,49 +74,22 @@ sys_cl = ss(Acl,Bcl,Ccl,0);
 % kormányszögben
 % Ekkor a closed loop ilyen alakban szerepel
 % x'(t) = (A-B1*K)*x(t) + B1*delta_ff + B2*vphides
-
-% 1. Teljes tengelytáv (Wheelbase)
-L = lf + lr;
-
-% 2. Tengelyterhelések számítása (statikus terheléseloszlás)
-% m_f: első tengelyre eső tömeg, m_r: hátsó tengelyre eső tömeg
-m_f = m * (lr / L); 
-m_r = m * (lf / L);
-
-% 3. Alulkormányzottsági gradiens (Understeer Gradient - Kv)
-% Ez határozza meg a jármű kanyarodási viselkedését (Rajamani Eq. 3.12/Table 3-1)
-Kv = (m_f / (2 * Caf)) - (m_r / (2 * Car));
-
-% 4. Oldalgyorsulás (Lateral Acceleration - ay)
-% Mivel vphides = Vx / R, ezért R = Vx / vphides
-% ay = Vx^2 / R = Vx * (Vx/R) = Vx * vphides
-% A szimulációban a kanyar sugara R = 1000m, így:
-ay = Vx^2 / R;
-
-% e2 steady state hibaja
-e2_ss = -lr/R + (lf*m*Vx*Vx)/((2*Car*L)*R);
-
-% 5. Feedforward kormányszög (delta_ff)
-% Ackermann szög (L/R) + dinamikus kompenzáció (Kv * ay)
-delta_ff_val = (L / R) + Kv * ay + K(3)*e2_ss;
-
-% Kiírás ellenőrzésképpen (fokban)
-fprintf('Szükséges Feedforward szög: %.4f fok\n', rad2deg(delta_ff_val));
-
-
 %% 4. JAVÍTOTT SZIMULÁCIÓ
-t = 0:0.01:10;
-vphides_val = Vx / R;
-u_vphides = zeros(size(t));
-u_delta_ff = zeros(size(t));
-u_vphides(t > 2) = vphides_val;
-u_vphides(t > 6) = 0;
-u_delta_ff(t > 2) = delta_ff_val;
-u_reference = gensig("square",7,10,0.01);
-u_reference = u_reference/70;
+t = 0:0.01:30;
+
+max_yaw_rate = Vx / R;
+% A bemeneti jel kiszámítása (Desired Yaw Rate)
+
+[u_vphides ,u_delta_ff] = generate8likePathExt(t,max_yaw_rate,m,lf,lr,Caf,Car,Vx,K(3));
+% u_delta_ff = zeros(size(t))
+% u_reference = gensig("sin",5,30,0.01);
+u_reference = zeros(size(t)); % Nulla hiba referencia!!!
+
 % Szimuláció
-u_sim = [u_delta_ff', u_vphides',u_reference];
+u_sim = [u_delta_ff', u_vphides',u_reference'];
 [~, ~, x_states] = lsim(sys_cl, u_sim, t);
+
+drawpath(t,x_states,Vx,u_vphides);
 
 e1 = x_states(:,1);
 e2 = x_states(:,3);

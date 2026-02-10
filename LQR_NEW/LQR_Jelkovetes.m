@@ -70,7 +70,7 @@ B_ext = [B1;...
          0];
 
 Q = diag([4 0.1 1 0.01 60]);
-r = 0.01;
+r = 1;
 K = lqr(A_ext,B_ext,Q,r);
 
 %% Állapotvisszacsatolás
