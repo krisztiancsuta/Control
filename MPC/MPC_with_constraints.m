@@ -12,13 +12,13 @@
 % The actual physical control
 % variable equals the incremental variable u plus its steady-state value uss.
 %% DYNAMIC MODEL IN TERMS OF ERROR WITH RESPECT TO ROAD
-R = 1000;  % radious of the road
-Caf = 80000; % Cornering stiffnes az első kerékhez
-Car = 80000; % Cornering stiffnes a hátsó kerékhez
-lf = 1.1; % Az autó tömegközéppontjától mért elülső tengelytáv
-lr = 1.58; % Az autó tömegközéppontjától mért hátsó tengelytáv
-m = 1573; % Az autó tömege
-Vx = 15; % Az autó haladási sebessége a saját koordinátarendszerében
+R =30;  % radious of the road
+Caf = 222685.8 / 2; % Cornering stiffnes az első kerékhez
+Car = 136242.8 / 2; % Cornering stiffnes a hátsó kerékhez
+lf = 1236e-3; % Az autó tömegközéppontjától mért elülső tengelytáv
+lr = 2789e-3 - lf; % Az autó tömegközéppontjától mért hátsó tengelytáv
+m = 2300; % Az autó tömege
+Vx = 10; % Az autó haladási sebessége a saját koordinátarendszerében
 Iz = 2873; % Az autó tehetetlenségi nyomatéka
 %% Contious time state space model 
 A = [0 1                            0                      0;...
@@ -26,42 +26,47 @@ A = [0 1                            0                      0;...
      0 0                            0                      1;...
      0 -(2*lf*Caf-2*lr*Car)/(Iz*Vx) (2*lf*Caf-2*lr*Car)/Iz -(2*lf*lf*Caf+2*lr*lr*Car)/(Iz*Vx)];
 % steering angle as input
-B = [0;...
+B1 = [0;...
      2*Caf/m;...
      0;...
      2*lf*Caf/Iz];
+% desired yaw rate as disturbance from road radius Vx/R
+B2 = [0;...
+     -(2*lf*Caf-2*lr*Car)/(m*Vx)-Vx;...
+     0;...
+     -(2*lf*lf*Caf+2*lr*lr*Car)/(Iz*Vx)];
 
 C = [1 0 0 0];
 
-c_ss = ss(A,B,C,0);
-%% TODO
-% Extend model with disturbance 
+c_ss = ss(A,[B1 B2],C,0);
 
 %% Discretise state space model
-Ts = 0.033; % 33 ms sampling time
+Ts = 33e-3; % 33 ms sampling time
 d_ss = c2d(c_ss,Ts);
 
 Ap = d_ss.A;
-Bp = d_ss.B;
+Bp2 = d_ss.B(:,2); % B Matrix for yaw rate
+Bp1 = d_ss.B(:,1); % B matrix for steering angle
 Cp = d_ss.C;
 
-Nc = 40;% Control Horizon up to 1320ms 
-Np = 66;% Prediction Horizon up to 2178ms 
-rw = 0.1;
+Nc = 50;% Control Horizon up to 1320ms 
+Np = 100;% Prediction Horizon up to 2178ms 
+rw = 150;
 
 %% Finding optimal solution for delta U
 % Using function for calculating following matrices:
 % Phi_Phi,Phi_F,Phi_R,A_e, B_e,C_e
-[Phi_Phi,Phi_F,Phi_R,A_e, B_e,C_e,F,Phi]=mpcgain(Ap,Bp,Cp,Nc,Np);
+[Phi_Phi,Phi_F,Phi_R,A_e, B_e,C_e,F,Phi]=mpcgain(Ap,Bp1,Cp,Nc,Np);
 % ΔU = inv((Φ'Φ+ R))(Φ'*Rs− Φ'*F*x(ki)) 
 
 %% Receding Horizon control
 % xm(k + 1) = Ap*xm(k) + Bp*u(k)
+t_vec = 0:Ts:35.7; 
 
 % Simulation Setup
-N_sim = 100; % Simulation steps
+N_sim = length(t_vec);% Simulation steps
 [m1, n1] = size(Cp);
-[n, n_in] = size(Bp);
+[n, n_in] = size(B_e);
 
 xm = [0; 0; 0; 0]; % Initial state
 y = Cp * xm;  
@@ -70,12 +75,9 @@ u = 0;  % Initial control signal (u(k-1))
 % The augmented state vector: x_e = [delta_xm; y]
 % delta_xm = xm(k) - xm(k-1). Since k=0, assume delta_xm = 0
 Xf = zeros(n1 + m1, 1); 
-%% Sawtooth signal as reference
-period = 40;       % Hány lépés alatt érjen körbe egy teljes háromszög ciklus
-amplitude = 0.5;   % A háromszög csúcsértéke (méterben)
+%% reference
 
-t_vec = (0:N_sim-1)';
-r = amplitude * (2/pi) * asin(sin(2*pi*t_vec/period));
+r = generate8likePath(t_vec,Vx/R);
 
 %% For plotting
 Y = zeros(N_sim, m1);
@@ -101,17 +103,17 @@ lambda=eig(Acl);
 % U = C1*u(ki-1) + C2*ΔU
 % These matrices can handle MIMO systems
 % Steady state steering angle is 0;
-u_max = pi/4; % Max steering angle
-u_min = -pi/4; % Min steering angle
+u_max = 0.2; % Max steering angle
+u_min = -0.2; % Min steering angle
 
 Umax = ones(Nc, 1) * u_max;
-Umin = ones(Nc, 1) * (u_min);
+Umin = ones(Nc, 1) * u_min;
 
-du_max = 0.05; % Max rate of steering angle change
-du_min = -0.05; % Min rate of steering angle change
+du_max = 0.08; % Max rate of steering angle change
+du_min = -0.08; % Min rate of steering angle change
 
 dUmax = ones(Nc, 1) * du_max;
-dUmin = ones(Nc, 1) * (du_min);
+dUmin = ones(Nc, 1) * du_min;
 
 % Kimeneti korlátok definiálása (ha az út széle pl. +/- 1 méter)
 Ymax = ones(Np, 1) * 4; 
@@ -125,10 +127,12 @@ C2 = kron(tril(ones(Nc)), I_n_in);
 M1 = [-C2;C2];
 M2 = [-eye(Nc*n_in); eye(Nc*n_in)];
 M3 = [-Phi;Phi];
-M= [M1;M2;M3];
+M= [M1;M2];
 % M*ΔU <= gamma
 
 DU = zeros(N_sim, n_in); % Storing dU values 
+
+H = (Phi_Phi + R);
 %% Receding Horizon Control Loop
 % We define R outside the loop as it is constant in this case
 for kk = 1:N_sim
@@ -139,15 +143,13 @@ for kk = 1:N_sim
     N3 = [-Ymin + F*Xf;... 
            Ymax - F*Xf];
     
-    gamma = [N1;N2;N3];
+    gamma = [N1;N2];
 
     % 1. Calculate the optimal control sequence (Delta U)
     % deltaU sequence for the entire control horizon
     % We use the current setpoint r(kk) to scale Phi_R
     deltaU_unconstrained = (Phi_Phi + R) \ (Phi_R * r(kk) - Phi_F * Xf);
     
-
-    H = (Phi_Phi + R);
     f = -(Phi_R * r(kk) - Phi_F * Xf);
 
     deltaU = QPhild(H, f, M, gamma);
@@ -160,9 +162,12 @@ for kk = 1:N_sim
     % 3. Update the actual control signal: u(k) = u(k-1) + delta_u(k)
     u = u + delta_u_k;
     
+    u = max(min(u, u_max), u_min);
+  
+
     % 4. Apply to the PLANT (Original State Space)
     xm_old = xm; % Store previous state for delta_xm calculation
-    xm = Ap * xm + Bp * u;
+    xm = Ap * xm + Bp1 * u + Bp2*r(kk);
     y = Cp * xm;
     
     % 5. Update the augmented state for the next iteration (Xf)
@@ -172,7 +177,7 @@ for kk = 1:N_sim
     
     % Save data for plotting
     Y(kk, :) = y;
-    U(kk, :) = u;
+    U(kk) = u;
     delta_x(kk,:) = xm - xm_old;
 end
 
