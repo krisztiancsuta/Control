@@ -49,9 +49,9 @@ Bp2 = d_ss.B(:,2); % B Matrix for yaw rate
 Bp1 = d_ss.B(:,1); % B matrix for steering angle
 Cp = d_ss.C;
 
-Nc = 50;% Control Horizon up to 1320ms 
+Nc = 20;% Control Horizon up to 1320ms 
 Np = 100;% Prediction Horizon up to 2178ms 
-rw = 150;
+rw = 50;
 
 %% Finding optimal solution for delta U
 % Using function for calculating following matrices:
@@ -87,8 +87,8 @@ delta_x = zeros(N_sim, n1);
 R = rw*eye(Nc*n_in);
 %% Calculate K vector for comparison with LQR
 K_full = (Phi_Phi + R) \ Phi_F;
-Kmpc = K_full(1:n_in, :);
-Ky = Kmpc(:, end-m1+1:end);
+Kmpc = K_full(1:n_in, :)
+Ky = Kmpc(:, end-m1+1:end)
 Acl = A_e - B_e * Kmpc;
 lambda=eig(Acl);
 

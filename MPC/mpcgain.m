@@ -55,7 +55,7 @@ end
 % For MIMO, we assume a setpoint for each output
 BarRs = repmat(eye(m1), Np, 1);
 Q = 1;
-Q_extended = kron(eye(Np), Q) 
+Q_extended = kron(eye(Np), Q) ;
 
 Phi_Phi= Phi'* Q_extended * Phi;
 Phi_F= Phi'* Q_extended * F;
