@@ -26,7 +26,7 @@ air_density = 1.225;
 Cd = 0.3;
 Am = 2.2;
 v0 = 25;
-b_aero = air_density*Cd*A*v0;
+b_aero = air_density*Cd*Am*v0;
 m  = 1000;
 b = 50;
 
@@ -41,7 +41,7 @@ Baug = [B;...
         0];
 
 Q = diag([100, 50]);
-R = 1/1e5; % 1/1e5
+R = 1/1e10; % 1/1e5
 
 K = lqr(Aaug,Baug,Q,R);
 
@@ -49,28 +49,27 @@ K = lqr(Aaug,Baug,Q,R);
 
 Acl = [(A-B*K(1)) -B*K(2);...
        -C       0];
-Bcl = [0 B;...
-       1 0];
+Bcl = [0;...
+       1];
 
 Ccl = [1 0];
 
 sys_cl = ss(Acl,Bcl,Ccl,0);
 %% 4. SZIMULÁCIÓ IDŐBEN VÁLTOZÓ PÁLYAPROFILLAL
 t = 0:0.01:30;
-v_ref_val = 15;
+v_ref_val = 10;
 v_ref = zeros(size(t));          
 u_ff = zeros(size(t));
 
 v_ref(t >= 1) = v_ref_val;       
 % FFWD számítása: a célsebességhez tartozó légellenállás
-%%u_ff(t >= 1) = 1/2 * Cd * air_density * Am * v_ref_val^4;
+u_ff(t >= 1) = -1/2 * Cd * air_density * Am * v_ref_val^2;
 
 % Referencia mátrix: 1. oszlop az integrátornak (v_ref), 2. oszlop a gyorsulásnak (u_ff)
-r = [v_ref', u_ff']; 
+r = [v_ref']; 
 
 [y_out, t_out, x_states] = lsim(sys_cl, r, t);
 vx = y_out(:,1);
-
 %% 5. ÁBRÁZOLÁS - JAVÍTOTT PEDÁL SZÁMÍTÁSSAL
 figure('Color', 'w', 'Name', 'LQR + FFWD Sebességkövetés');
 
