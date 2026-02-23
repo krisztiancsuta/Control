@@ -1,156 +1,134 @@
+%% Longitudinális Járműirányítás MPC-vel: FFWD vs. No-FFWD
+clear; clc; close all;
+
+%% 1. Fizikai paraméterek és Modell
 air_density = 1.225;
 Cd = 0.3;
 Am = 2.2;
 v0 = 25;
-b_aero = air_density*Cd*Am*v0;
+b_aero = air_density * Cd * Am * v0;
 m  = 1000;
 b = 50;
 
+% Folytonos állapot-tér modell (v' = -b/m*v + 1/m*u)
 A = -b/m;
 B = 1/m;
-C = 1; %
+C = 1; 
+c_ss = ss(A, B, C, 0);
 
-c_ss = ss(A,B,C,0);
-%% Discrete model
-Ts = 33e-3; % 33 ms sampling time
-d_ss = c2d(c_ss,Ts);
-
+% Diszkretizálás
+Ts = 33e-3; % 33 ms mintavételi idő
+d_ss = c2d(c_ss, Ts);
 Ap = d_ss.A;
-Bp = d_ss.B; % B matrix for Fv angle
+Bp = d_ss.B;
 Cp = d_ss.C;
 
-Nc = 20;
-Np = 60; 
-rw = 0.00001;
+%% 2. MPC tervezés
+Nc = 30; % Kontroll horizont
+Np = 300; % Predikciós horizont
+rw = 0.0001; % Súlyozás a beavatkozó jel változására
 
-[Phi_Phi,Phi_F,Phi_R,A_e, B_e,C_e,F,Phi]=mpcgain(Ap,Bp,Cp,Nc,Np);
-%% Receding Horizon control
-% xm(k + 1) = Ap*xm(k) + Bp*u(k)
+% MPC mátrixok generálása (Feltételezve, hogy az mpcgain elérhető)
+[Phi_Phi, Phi_F, Phi_R, A_e, B_e, C_e, F, Phi] = mpcgain(Ap, Bp, Cp, Nc, Np);
+
+%% 3. Szimulációs beállítások
 t_vec = 0:Ts:35.7; 
-
 N_sim = length(t_vec);
 [m1, n1] = size(Cp);
-[n, n_in] = size(B_e);
+[~, n_in] = size(B_e);
 
-xm = 0; % Initial state
-y = Cp * xm;  
-u = 0;  % Initial control signal (u(k-1))
-
-% The augmented state vector: x_e = [delta_xm; y]
-% delta_xm = xm(k) - xm(k-1). Since k=0, assume delta_xm = 0
-Xf = zeros(n1 + m1, 1);
-%% Reference Vx signal
+% Referencia jel és FFWD komponens
 r = zeros(size(t_vec));
-u_ff = zeros(size(t_vec));
-u_ff(t_vec >= 10) = 1/2 * Cd * air_density * Am *25^2;
-u_ff(t_vec >= 20) = 1/2 * Cd * air_density * Am *5^2;
+u_ff_all = zeros(size(t_vec));
+
 r(t_vec >= 10) = 25; 
 r(t_vec >= 20) = 5; 
 
-%% For plotting
-Y = zeros(N_sim, m1);
-U = zeros(N_sim, n_in);
-DU = zeros(N_sim, n_in); % Storing dU values 
-delta_x = zeros(N_sim, n1);
+% FFWD számítása a referencia sebesség alapján (stacionárius egyensúlyhoz)
+u_ff_all(t_vec >= 10) = 0.5 * Cd * air_density * Am * 25^2;
+u_ff_all(t_vec >= 20) = 0.5 * Cd * air_density * Am * 5^2;
 
-R = rw*eye(Nc*n_in)
-%% Calculate K vector for comparison with LQR
-K_full = (Phi_Phi + R) \ Phi_F;
-Kmpc = K_full(1:n_in, :)
-Ky = Kmpc(:, end-m1+1:end)
-Acl = A_e - B_e * Kmpc;
-lambda=eig(Acl);
-%% Constraints
-u_max = 10000; 
-u_min = -10000; 
+% Korlátok
+u_max = 10000; u_min = -10000;
+du_max = 2000; du_min = -2000;
 
-Umax = ones(Nc, 1) * u_max;
-Umin = ones(Nc, 1) * u_min;
-
-du_max = 2000;
-du_min = -2000; 
-
-dUmax = ones(Nc, 1) * du_max;
-dUmin = ones(Nc, 1) * du_min;
-
+% Megszorítás mátrixok (QP formátumhoz)
 I_n_in = eye(n_in);
 C1 = repmat(I_n_in, Nc, 1);
 C2 = kron(tril(ones(Nc)), I_n_in);
-
-% The 3 contstraints enaquility can be described as:
-M1 = [-C2;C2];
+M1 = [-C2; C2];
 M2 = [-eye(Nc*n_in); eye(Nc*n_in)];
-M= [M1;M2];
-% M*ΔU <= gamma
+M = [M1; M2];
+H = (Phi_Phi + rw*eye(Nc*n_in));
 
-DU = zeros(N_sim, n_in); % Storing dU values 
+%% 4. Futtatás: Szimulációs loop függvényben az újrahasznosíthatóságért
+sim_with_ffwd = run_simulation(true, u_ff_all, N_sim, n_in, n1, m1, r, H, M, C1, Phi_R, Phi_F, Ap, Bp, Cp, u_min, u_max, du_min, du_max, Nc);
+sim_no_ffwd   = run_simulation(false, u_ff_all, N_sim, n_in, n1, m1, r, H, M, C1, Phi_R, Phi_F, Ap, Bp, Cp, u_min, u_max, du_min, du_max, Nc);
 
-H = (Phi_Phi + R);
-%% Receding Horizon Control Loop
-% We define R outside the loop as it is constant in this case
-for kk = 1:N_sim
- 
-    N1 = [-Umin + C1*u;... 
-           Umax - C1*u];
-    N2 = [-dUmin;dUmax];
-    gamma = [N1;N2];
+%% 5. Ábrázolás
+figure('Color', 'w', 'Position', [100, 100, 900, 600]);
 
-    % 1. Calculate the optimal control sequence (Delta U)
-    % deltaU sequence for the entire control horizon
-    % We use the current setpoint r(kk) to scale Phi_R
-    deltaU_unconstrained = (Phi_Phi + R) \ (Phi_R * r(kk) - Phi_F * Xf);
-    
-    f = -(Phi_R * r(kk) - Phi_F * Xf);
-
-    deltaU = QPhild(H, f, M, gamma);
-   
-
-    % 2. Receding Horizon principle: Apply ONLY the first control move
-    delta_u_k = deltaU(1:n_in);
-    DU(kk, :) = delta_u_k;
-    
-    % 3. Update the actual control signal: u(k) = u(k-1) + delta_u(k)
-    u = u + delta_u_k + u_ff(kk);
-    
-    u = max(min(u, u_max), u_min);
-  
-
-    % 4. Apply to the PLANT (Original State Space)
-    xm_old = xm; % Store previous state for delta_xm calculation
-    xm = Ap * xm + Bp * u ;
-    y = Cp * xm;
-    
-    % 5. Update the augmented state for the next iteration (Xf)
-    % This is the core of the receding horizon feedback
-    % Xf(k+1) = [xm(k+1)-xm(k); y(k+1)]
-    Xf = [(xm - xm_old); y];
-    
-    % Save data for plotting
-    Y(kk, :) = y;
-    U(kk) = u;
-    delta_x(kk,:) = xm - xm_old;
-end
-%% Ábrázolás
-figure('Color', 'w', 'Name', 'MPC Járműirányítás');
-
-% 1. Alábra: Sebesség
+% Sebesség összehasonlítása
 subplot(2,1,1);
-stairs(t_vec, Y, 'LineWidth', 2, 'DisplayName', 'MPC Sebesség (v_x)');
-hold on;
-stairs(t_vec, r, '--r', 'LineWidth', 1.5, 'DisplayName', 'Referencia');
-grid on;
-ylabel('Sebesség [m/s]');
-title('MPC alapú sebességkövetés');
-legend('Location', 'southeast');
+plot(t_vec, r, 'k--', 'LineWidth', 1.5, 'DisplayName', 'Referencia'); hold on;
+plot(t_vec, sim_with_ffwd.Y, 'b', 'LineWidth', 2, 'DisplayName', 'MPC + FFWD');
+plot(t_vec, sim_no_ffwd.Y, 'r', 'LineWidth', 1.5, 'DisplayName', 'Csak MPC');
+grid on; ylabel('Sebesség [m/s]');
+title('MPC alapú sebességkövetés összehasonlítása');
+legend('Location', 'best');
 
-% 2. Alábra: Pedálpozíció
-% Mappelés a konzulens szerint: F / 10000
-pedal = U / 10000;
-
+% Beavatkozó jel (Pedál) összehasonlítása
 subplot(2,1,2);
-stairs(t_vec, pedal, 'Color', [0.466 0.674 0.188], 'LineWidth', 2);
-grid on;
-ylabel('Pedálpozíció (F/10000)');
+plot(t_vec, sim_with_ffwd.U / 10000, 'b', 'LineWidth', 2, 'DisplayName', 'MPC + FFWD'); hold on;
+plot(t_vec, sim_no_ffwd.U / 10000, 'r', 'LineWidth', 1.5, 'DisplayName', 'Csak MPC');
+grid on; ylabel('Pedálpozíció (normált)');
 xlabel('Idő [s]');
-title('Beavatkozó jel (Gáz/Fék)');
-ylim([-1.1 1.1]);
+title('Beavatkozó jelek');
+legend('Location', 'best');
+
+%% --- Segédfüggvény a szimulációhoz ---
+function res = run_simulation(use_ffwd, u_ff_vec, N_sim, n_in, n1, m1, r, H, M, C1, Phi_R, Phi_F, Ap, Bp, Cp, u_min, u_max, du_min, du_max, Nc)
+    xm = 0; u = 0;
+    Xf = zeros(n1 + m1, 1);
+    
+    U_out = zeros(N_sim, 1);
+    Y_out = zeros(N_sim, 1);
+    
+    Umax = ones(Nc, 1) * u_max;
+    Umin = ones(Nc, 1) * u_min;
+    dUmax = ones(Nc, 1) * du_max;
+    dUmin = ones(Nc, 1) * du_min;
+
+    for kk = 1:N_sim
+        % Korlátok frissítése az aktuális u(k-1) alapján
+        gamma = [-Umin + C1*u; Umax - C1*u; -dUmin; dUmax];
+        
+        % QP célfüggvény gradiens
+        f = -(Phi_R * r(kk) - Phi_F * Xf);
+
+        % QP megoldás (QPhild függvény hívása)
+        deltaU = QPhild(H, f, M, gamma);
+        delta_u_k = deltaU(1:n_in);
+        
+        % Beavatkozó jel kiszámítása
+        ff_term = 0;
+        if use_ffwd, ff_term = u_ff_vec(kk); end
+        
+        u = u + delta_u_k + ff_term;
+        u = max(min(u, u_max), u_min); % Szaturáció
+        
+        % Plant szimuláció
+        xm_old = xm;
+        xm = Ap * xm + Bp * u;
+        y = Cp * xm;
+        
+        % Állapot frissítés a következő lépéshez
+        Xf = [(xm - xm_old); y];
+        
+        % Mentés
+        Y_out(kk) = y;
+        U_out(kk) = u;
+    end
+    res.Y = Y_out;
+    res.U = U_out;
+end

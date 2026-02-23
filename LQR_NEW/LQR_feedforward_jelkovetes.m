@@ -1,11 +1,11 @@
 %% DYNAMIC MODEL IN TERMS OF ERROR WITH RESPECT TO ROAD
-R = 30;  % radious of the road
+R = 20;  % radious of the road
 Caf = 222685.8 / 2; % Cornering stiffnes az első kerékhez
 Car = 136242.8 / 2; % Cornering stiffnes a hátsó kerékhez
 lf = 1236e-3; % Az autó tömegközéppontjától mért elülső tengelytáv
 lr = 2789e-3 - lf; % Az autó tömegközéppontjától mért hátsó tengelytáv
 m = 2300; % Az autó tömege
-Vx = 20; % Az autó haladási sebessége a saját koordinátarendszerében
+Vx = 10; % Az autó haladási sebessége a saját koordinátarendszerében
 Iz = 2873; % Az autó tehetetlenségi nyomatéka
 % Az állapotvektorunk e1, e1', e2, e2' == 
 % laterális pozíciócióhiba a sávközéptől,
@@ -14,9 +14,9 @@ Iz = 2873; % Az autó tehetetlenségi nyomatéka
 % legyezési szöghiba sebessége
 % phides = desired yaw rate determined from road radius R Vx/R
 
-A = [0 1                            0                      0;...
+A = [0 1 0 0;...
      0 -(2*Caf+2*Car)/(m*Vx)        (2*Caf+2*Car)/m        (-2*lf*Caf+2*lr*Car)/(m*Vx);...
-     0 0                            0                      1;...
+     0 0 0 1;...
      0 -(2*lf*Caf-2*lr*Car)/(Iz*Vx) (2*lf*Caf-2*lr*Car)/Iz -(2*lf*lf*Caf+2*lr*lr*Car)/(Iz*Vx)];
 
 % steering angle as input
@@ -49,8 +49,8 @@ A_ext = [A, zeros(4, 1);...
 B_ext = [B1;...
          0]; % A zavarás mint bemenet jelenik meg a rendszerben
 
-Q = diag([4 0.01 1 0.01 60]);
-r = 1;
+Q = diag([4 0.1 1 0.1 60]);
+r = 10;
 
 K = lqr(A_ext,B_ext,Q,r);
 %% Állapotvisszacsatolás
@@ -89,7 +89,7 @@ u_reference = zeros(size(t)); % Nulla hiba referencia!!!
 u_sim = [u_delta_ff', u_vphides',u_reference'];
 [~, ~, x_states] = lsim(sys_cl, u_sim, t);
 
-drawpath(t,x_states,Vx,u_vphides);
+drawpath(t,x_states,x_states,Vx,u_vphides);
 
 e1 = x_states(:,1);
 e2 = x_states(:,3);

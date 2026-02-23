@@ -16,13 +16,13 @@
 
 
 %% Jelkövető szabályzó struktúra módosítással
-R = 30;  % radious of the road
+R = 1000;  % radious of the road
 Caf = 222685.8 / 2; % Cornering stiffnes az első kerékhez
 Car = 136242.8 / 2; % Cornering stiffnes a hátsó kerékhez
 lf = 1236e-3; % Az autó tömegközéppontjától mért elülső tengelytáv
 lr = 2789e-3 - lf; % Az autó tömegközéppontjától mért hátsó tengelytáv
 m = 2300; % Az autó tömege
-Vx = 20; % Az autó haladási sebessége a saját koordinátarendszerében
+Vx = 30; % Az autó haladási sebessége a saját koordinátarendszerében
 Iz = 2873; % Az autó tehetetlenségi nyomatéka
 vphides = Vx / R;
 %% Az állapotvektorunk e1, e1', e2, e2' == 

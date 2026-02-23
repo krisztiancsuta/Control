@@ -1,95 +1,90 @@
-% The two major elements of the longitudinal vehicle model are the
-% vehicle dynamics and the powertrain dynamics.
-% 1.The vehicle dynamics are influenced by longitudinal tire forces, aerodynamic
-% drag forces, rolling resistance forces and gravitational forces
-% 2.The longitudinal powertrain system of the vehicle
-% consists of the internal combustion engine, the torque converter, the
-% transmission and the wheels
-%% Parameters
-% Fxf is the longitudinal tire force at the front tires
-% Fxr, is the longitudinal tire force at the rear tires
-% Faero,, is the equivalent longitudinal aerodynamic drag force
-% Rxf is the force due to rolling resistance at the front tires
-% Rxr is the force due to rolling resistance at the rear tires
-% m is the mass of the vehicle
-% g is the acceleration due to gravity
-% Phi is the angle of inclination of the road on which the vehicle is travelingm = 1000;
+%% MATLAB Szimuláció: LQR+FFWD vs. Csak LQR (For-loop)
+clear; clc;
 
-% state vector is deltavx = vx-vx0
-% ax = -b/m * Vx + 1/m * Fv
-% FFWD tag -> Faero at Vx0 speed
-
-% u = the force that pulls the vehicle forward
-
-% we want to find ax
+%% 1. Rendszer paraméterek
 air_density = 1.225;
 Cd = 0.3;
 Am = 2.2;
-v0 = 25;
-b_aero = air_density*Cd*Am*v0;
 m  = 1000;
 b = 50;
 
+% Alaprendszer
 A = -b/m;
 B = 1/m;
-C = 1; % Output is vx
-D = 0;
+C = 1;
 
-Aaug = [A 0;
-        -C 0];
-Baug = [B;...
-        0];
+% Kiterjesztett rendszer (Integrátorral)
+Aaug = [A 0; -C 0];
+Baug = [B; 0];
 
+% LQR Tervezés
 Q = diag([100, 50]);
-R = 1/1e10; % 1/1e5
+R = 1/1e5;
+K = lqr(Aaug, Baug, Q, R);
 
-K = lqr(Aaug,Baug,Q,R);
+%% 2. Szimulációs beállítások
+dt = 0.033;
+t = 0:dt:30;
+n = length(t);
 
-%% Állapotvisszacsatolás
+v_ref_val = 30;
+v_ref = (t >= 1) * v_ref_val; 
+% Előrecsatolt jel (FFWD) - csak az első esethez
+u_ff_signal = (t >= 1) * (0.5 * Cd * air_density * Am * v_ref_val^2);
 
-Acl = [(A-B*K(1)) -B*K(2);...
-       -C       0];
-Bcl = [0;...
-       1];
+% Tárolók az 1. esethez (LQR + FFWD)
+x_ff = zeros(2, n);
+y_ff = zeros(1, n);
+u_total_ff = zeros(1, n);
 
-Ccl = [1 0];
+% Tárolók a 2. esethez (Csak LQR)
+x_no = zeros(2, n);
+y_no = zeros(1, n);
+u_total_no = zeros(1, n);
 
-sys_cl = ss(Acl,Bcl,Ccl,0);
-%% 4. SZIMULÁCIÓ IDŐBEN VÁLTOZÓ PÁLYAPROFILLAL
-t = 0:0.01:30;
-v_ref_val = 10;
-v_ref = zeros(size(t));          
-u_ff = zeros(size(t));
+%% 3. Szimulációs hurok
+for k = 1:n-1
+    % --- 1. ESET: LQR + FEEDFORWARD ---
+    u_total_ff(k) = -K(1)*x_ff(1,k) - K(2)*x_ff(2,k) + u_ff_signal(k);
+    u_total_ff(k) = max(0, min(10000, u_total_ff(k))); % Hard limit példa
 
-v_ref(t >= 1) = v_ref_val;       
-% FFWD számítása: a célsebességhez tartozó légellenállás
-u_ff(t >= 1) = -1/2 * Cd * air_density * Am * v_ref_val^2;
+    dx_ff = Aaug * x_ff(:,k) + Baug * u_total_ff(k) + [0; 1] * v_ref(k);
+    x_ff(:, k+1) = x_ff(:, k) + dx_ff * dt;
+    y_ff(k) = x_ff(1,k);
 
-% Referencia mátrix: 1. oszlop az integrátornak (v_ref), 2. oszlop a gyorsulásnak (u_ff)
-r = [v_ref']; 
+    % --- 2. ESET: CSAK LQR ---
+    u_total_no(k) = -K(1)*x_no(1,k) - K(2)*x_no(2,k); % Nincs + u_ff!
+    dx_no = Aaug * x_no(:,k) + Baug * u_total_no(k) + [0; 1] * v_ref(k);
+    x_no(:, k+1) = x_no(:, k) + dx_no * dt;
+    y_no(k) = x_no(1,k);
+    u_total_no(k) = max(0, min(10000, u_total_no(k))); % Hard limit példa
+end
 
-[y_out, t_out, x_states] = lsim(sys_cl, r, t);
-vx = y_out(:,1);
-%% 5. ÁBRÁZOLÁS - JAVÍTOTT PEDÁL SZÁMÍTÁSSAL
-figure('Color', 'w', 'Name', 'LQR + FFWD Sebességkövetés');
+% Utolsó értékek mentése
+y_ff(n) = x_ff(1,n);
+y_no(n) = x_no(1,n);
 
-% 1. Alábra: Sebesség
+%% 4. Összehasonlító ábrázolás
+figure('Color', 'w', 'Position', [100 100 800 600]);
+
+% Sebességkövetés
 subplot(2,1,1);
-plot(t, vx, 'LineWidth', 2, 'DisplayName', 'Mért sebesség (v_x)');
+plot(t, v_ref, '--r', 'LineWidth', 1.2, 'DisplayName', 'Referencia');
 hold on;
-plot(t, v_ref, '--r', 'LineWidth', 1.5, 'DisplayName', 'Referencia (r)');
-grid on; ylabel('Sebesség [m/s]'); title('Jármű sebességkövetése');
+plot(t, y_ff, 'Color', [0 0.447 0.741], 'LineWidth', 2, 'DisplayName', 'LQR + Feedforward');
+plot(t, y_no, 'Color', [0.85 0.325 0.098], 'LineWidth', 2, 'LineStyle', ':', 'DisplayName', 'Csak LQR');
+grid on;
+ylabel('Sebesség [m/s]');
+title('Jármű sebességkövetése: Előrecsatolás hatása');
 legend('Location', 'southeast');
 
-% 2. Alábra: Pedálpozíció (Feedback + FFWD összege!)
-% u_feedback = -K1 * delta_v - K2 * integral_hiba
-F_feedback = -K(1)*x_states(:,1) - K(2)*x_states(:,2);
-F_total = F_feedback + u_ff'; % Itt adjuk hozzá a FFWD ágat!
-
-pedal = F_total / 10000;
-
+% Beavatkozó jel (Pedálpozíció)
 subplot(2,1,2);
-plot(t, pedal, 'Color', [0.4660 0.6740 0.1880], 'LineWidth', 2);
-grid on; ylabel('Pedálpozíció'); xlabel('Idő [s]');
-title('Teljes beavatkozó jel (LQR feedback + FFWD)');
-ylim([-1.1 1.1]); % Realitás tartomány
+plot(t, u_total_ff / 10000, 'Color', [0.466 0.674 0.188], 'LineWidth', 2, 'DisplayName', 'LQR + Feedforward');
+hold on;
+plot(t, u_total_no / 10000, 'Color', [0.635 0.078 0.184], 'LineWidth', 1.5, 'LineStyle', '--', 'DisplayName', 'Csak LQR');
+grid on;
+ylabel('Pedálpozíció [-]');
+xlabel('Idő [s]');
+title('Beavatkozó jelek összehasonlítása');
+legend;
