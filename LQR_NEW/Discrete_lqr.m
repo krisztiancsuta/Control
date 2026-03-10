@@ -8,11 +8,11 @@ clear; clc; close all;
 R = 20;             % Útkanyarulat sugara [m]
 Caf = 222685.8 / 2; % Első tengely oldalkúszási merevsége
 Car = 136242.8 / 2; % Hátsó tengely oldalkúszási merevsége
-lf = 1.236;         % Tömegközéppont távolsága az első tengelytől [m]
-lr = 2.789 - lf;    % Tömegközéppont távolsága a hátsó tengelytől [m]
-m = 2300;           % Jármű tömege [kg]
+lf = 1.85;         % Tömegközéppont távolsága az első tengelytől [m]
+lr = 2.43;    % Tömegközéppont távolsága a hátsó tengelytől [m]
+m = 1465;           % Jármű tömege [kg]
 Vx = 10;            % Haladási sebesség [m/s]
-Iz = 2873;          % Tehetetlenségi nyomaték [kg*m^2]
+Iz = 1600;          % Tehetetlenségi nyomaték [kg*m^2]
 Ts = 0.033;
 %% 2. Állapottér modell (Hiba-dinamika)
 % Állapotok: [e1; e1_dot; e2; e2_dot]
@@ -37,7 +37,7 @@ A_ext = [ss_d.A, zeros(4, 1); -C*Ts, 1];
 B_ext = [ss_d.B(:,1); 0];
 
 Q = diag([4 0.1 1 0.1 60]); % Súlyozás: e1, de1, e2, de2, integrált hiba
-r_weight = 10;
+r_weight = 0.1;
 
 K = dlqr(A_ext,B_ext, Q, r_weight);
 K_pd = K(1:4); % Állapot-visszacsatolási erősítés

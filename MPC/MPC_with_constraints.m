@@ -12,13 +12,13 @@
 % The actual physical control
 % variable equals the incremental variable u plus its steady-state value uss.
 %% DYNAMIC MODEL IN TERMS OF ERROR WITH RESPECT TO ROAD
-R =30;  % radious of the road
+R =10;  % radious of the road
 Caf = 222685.8 / 2; % Cornering stiffnes az első kerékhez
 Car = 136242.8 / 2; % Cornering stiffnes a hátsó kerékhez
 lf = 1236e-3; % Az autó tömegközéppontjától mért elülső tengelytáv
 lr = 2789e-3 - lf; % Az autó tömegközéppontjától mért hátsó tengelytáv
 m = 2300; % Az autó tömege
-Vx = 10; % Az autó haladási sebessége a saját koordinátarendszerében
+Vx = 25; % Az autó haladási sebessége a saját koordinátarendszerében
 Iz = 2873; % Az autó tehetetlenségi nyomatéka
 %% Contious time state space model 
 A = [0 1                            0                      0;...
@@ -49,9 +49,9 @@ Bp2 = d_ss.B(:,2); % B Matrix for yaw rate
 Bp1 = d_ss.B(:,1); % B matrix for steering angle
 Cp = d_ss.C;
 
-Nc = 20;% Control Horizon up to 1320ms 
-Np = 100;% Prediction Horizon up to 2178ms 
-rw = 50;
+Nc =100;% Control Horizon up to 1320ms 
+Np = 200;% Prediction Horizon up to 2178ms 
+rw = 1;
 
 %% Finding optimal solution for delta U
 % Using function for calculating following matrices:
@@ -69,7 +69,7 @@ N_sim = length(t_vec);% Simulation steps
 [n, n_in] = size(B_e);
 
 xm = [0; 0; 0; 0]; % Initial state
-y = Cp * xm;  
+y = Cp*xm;  
 u = 0;  % Initial control signal (u(k-1))
 
 % The augmented state vector: x_e = [delta_xm; y]
@@ -103,8 +103,8 @@ lambda=eig(Acl);
 % U = C1*u(ki-1) + C2*ΔU
 % These matrices can handle MIMO systems
 % Steady state steering angle is 0;
-u_max = 0.2; % Max steering angle
-u_min = -0.2; % Min steering angle
+u_max = 0.5; % Max steering angle
+u_min = -0.5; % Min steering angle
 
 Umax = ones(Nc, 1) * u_max;
 Umin = ones(Nc, 1) * u_min;
@@ -148,9 +148,9 @@ for kk = 1:N_sim
     % 1. Calculate the optimal control sequence (Delta U)
     % deltaU sequence for the entire control horizon
     % We use the current setpoint r(kk) to scale Phi_R
-    deltaU_unconstrained = (Phi_Phi + R) \ (Phi_R * r(kk) - Phi_F * Xf);
+    deltaU_unconstrained = (Phi_Phi + R) \ (Phi_R - Phi_F * Xf);
     
-    f = -(Phi_R * r(kk) - Phi_F * Xf);
+    f = Phi_F * Xf;
 
     deltaU = QPhild(H, f, M, gamma);
    
@@ -168,7 +168,7 @@ for kk = 1:N_sim
     % 4. Apply to the PLANT (Original State Space)
     xm_old = xm; % Store previous state for delta_xm calculation
     xm = Ap * xm + Bp1 * u + Bp2*r(kk);
-    y = Cp * xm;
+    y = Cp*xm;
     
     % 5. Update the augmented state for the next iteration (Xf)
     % This is the core of the receding horizon feedback
@@ -194,12 +194,12 @@ plot(k, ones(size(k))*u_min, 'r--', 'LineWidth', 1);
 grid on; ylabel('\delta_f [rad]'); title('Optimális kormányszög (u) és korlátok');
 legend('u', 'u_{max/min}');
 
-% 2. ábra: Kimenet (y) és Referencia (Háromszögjel)
 subplot(6,2,[3,4])
-plot(k, Y, 'b-', 'LineWidth', 2); hold on;
-plot(k, r, 'r--', 'LineWidth', 1);
-grid on; ylabel('y [m]'); title('Pályakövetés (Háromszög referencia)');
-legend('Kimenet', 'Referencia');
+plot(k, Y, 'b-', 'LineWidth', 2);
+grid on
+ylabel('e_y [m]')
+title('Lateral position error')
+legend('e_y')
 
 % 3. ábra: Delta U diagram (Itt már nem lesz felülírva)
 subplot(6,2,[5,6]) % 2 oszlop szélesre vettem, hogy jól látszódjon a dinamika
