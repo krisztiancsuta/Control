@@ -49,14 +49,15 @@ Bp2 = d_ss.B(:,2); % B Matrix for yaw rate
 Bp1 = d_ss.B(:,1); % B matrix for steering angle
 Cp = d_ss.C;
 
-Nc = 100;% Control Horizon up to 1320ms 
-Np = 100;% Prediction Horizon up to 2178ms 
-rw = 1;
+Nc =4;% Control Horizon up to 1320ms 
+Np = 30;% Prediction Horizon up to 2178ms 
+rw = 60;
+Q = 0.1;
 
 %% Finding optimal solution for delta U
 % Using function for calculating following matrices:
 % Phi_Phi,Phi_F,Phi_R,A_e, B_e,C_e
-[Phi_Phi,Phi_F,Phi_R,~, ~,~,F,Phi]=mpcgain(Ap,Bp1,Cp,Nc,Np);
+[Phi_Phi,Phi_F,Phi_R,A_e, B_e,C_e,F,Phi]=mpcgain(Ap,Bp1,Cp,Nc,Np,Q);
 % ΔU = inv((Φ'Φ+ R))(Φ'*Rs− Φ'*F*x(ki)) 
 
 %% Receding Horizon control
@@ -77,7 +78,7 @@ u = 0;  % Initial control signal (u(k-1))
 Xf = zeros(n1 + m1, 1); 
 %% reference
 
-r = generate8likePath(t_vec,Vx/R);
+r = generate8likePath(t_vec,0.5);
 
 %% For plotting
 Y = zeros(N_sim, m1);
@@ -103,8 +104,8 @@ lambda=eig(Acl);
 % U = C1*u(ki-1) + C2*ΔU
 % These matrices can handle MIMO systems
 % Steady state steering angle is 0;
-u_max = 0.5; % Max steering angle
-u_min = -0.5; % Min steering angle
+u_max = 0.2; % Max steering angle
+u_min = -0.2; % Min steering angle
 
 Umax = ones(Nc, 1) * u_max;
 Umin = ones(Nc, 1) * u_min;
@@ -124,26 +125,29 @@ C1 = repmat(I_n_in, Nc, 1);
 C2 = kron(tril(ones(Nc)), I_n_in);
 
 % The 3 contstraints enaquility can be described as:
-M1 = [-C2;C2];
-M2 = [-eye(Nc*n_in); eye(Nc*n_in)];
+M1 = [C2;-C2];
+M2 = [eye(Nc*n_in); -eye(Nc*n_in)];
 M3 = [-Phi;Phi];
 M= [M1;M2];
 % M*ΔU <= gamma
 
 DU = zeros(N_sim, n_in); % Storing dU values 
+lambda0 = zeros(4 * Nc, 1); % Initialize Lagrange multipliers
 
 H = (Phi_Phi + R);
+last_ucon = 0;
 %% Receding Horizon Control Loop
 % We define R outside the loop as it is constant in this case
 for kk = 1:N_sim
  
-    N1 = [-Umin + C1*u;... 
-           Umax - C1*u];
-    N2 = [-dUmin;dUmax];
+    N1 = [Umax - C1*last_ucon;...
+         -Umin + C1*last_ucon];
+    N2 = [dUmax;-dUmin];
+
     N3 = [-Ymin + F*Xf;... 
            Ymax - F*Xf];
     
-    gamma = [N1;N2]
+    gamma = [N1;N2];
 
     % 1. Calculate the optimal control sequence (Delta U)
     % deltaU sequence for the entire control horizon
@@ -152,7 +156,7 @@ for kk = 1:N_sim
     
     f = Phi_F * Xf;
 
-    deltaU = QPhild(H, f, M, gamma);
+    deltaU = QPhild(H, f, M, gamma, lambda0);
    
 
     % 2. Receding Horizon principle: Apply ONLY the first control move
@@ -162,7 +166,7 @@ for kk = 1:N_sim
     % 3. Update the actual control signal: u(k) = u(k-1) + delta_u(k)
     u = u + delta_u_k;
     
-    u = max(min(u, u_max), u_min);
+    %u = max(min(u, u_max), u_min);
   
 
     % 4. Apply to the PLANT (Original State Space)
@@ -179,6 +183,7 @@ for kk = 1:N_sim
     Y(kk, :) = y;
     U(kk) = u;
     delta_x(kk,:) = xm - xm_old;
+    last_ucon = u;
 end
 
 %% Plotting Results (Javított számozással)
