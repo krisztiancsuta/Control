@@ -19,18 +19,17 @@ Baug = [B; 0];
 
 % LQR Tervezés
 Q = diag([100, 50]);
-R = 1/1e5;
+R = 0.001;
 K = lqr(Aaug, Baug, Q, R);
 
 %% 2. Szimulációs beállítások
 dt = 0.033;
-t = 0:dt:30;
+t = 0:dt:50;
 n = length(t);
 
 v_ref_val = 30;
 v_ref = (t >= 1) * v_ref_val; 
 % Előrecsatolt jel (FFWD) - csak az első esethez
-u_ff_signal = (t >= 1) * (0.5 * Cd * air_density * Am * v_ref_val^2);
 
 % Tárolók az 1. esethez (LQR + FFWD)
 x_ff = zeros(2, n);
@@ -45,7 +44,10 @@ u_total_no = zeros(1, n);
 %% 3. Szimulációs hurok
 for k = 1:n-1
     % --- 1. ESET: LQR + FEEDFORWARD ---
-    u_total_ff(k) = -K(1)*x_ff(1,k) - K(2)*x_ff(2,k) + u_ff_signal(k);
+    v_act = x_ff(1,k);
+    u_ff_dynamic = 0.5 * Cd * air_density * Am * v_act^2;
+
+    u_total_ff(k) = -K(1)*x_ff(1,k) - K(2)*x_ff(2,k) + u_ff_dynamic;
     u_total_ff(k) = max(0, min(10000, u_total_ff(k))); % Hard limit példa
 
     dx_ff = Aaug * x_ff(:,k) + Baug * u_total_ff(k) + [0; 1] * v_ref(k);

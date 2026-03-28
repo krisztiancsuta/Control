@@ -56,7 +56,7 @@ rw = 1;
 %% Finding optimal solution for delta U
 % Using function for calculating following matrices:
 % Phi_Phi,Phi_F,Phi_R,A_e, B_e,C_e
-[Phi_Phi,Phi_F,Phi_R,A_e, B_e,C_e,F,Phi]=mpcgain(Ap,Bp1,Cp,Nc,Np);
+[Phi_Phi,Phi_F,Phi_R,~, ~,~,F,Phi]=mpcgain(Ap,Bp1,Cp,Nc,Np);
 % ΔU = inv((Φ'Φ+ R))(Φ'*Rs− Φ'*F*x(ki)) 
 
 %% Receding Horizon control

@@ -107,7 +107,7 @@ function res = run_simulation(use_ffwd, phys, N_sim, n_in, n1, m1, r, H, M, C1, 
         delta_u_k = deltaU(1:n_in);
         
         % 3. MPC JEL FRISSÍTÉSE
-      ;
+        u_mpc = u_mpc + delta_u_k;
         
         % 4. DINAMIKUS ELŐRECSATOLÁS (FFD) SZÁMÍTÁSA
         % Itt használjuk az aktuális sebességet (xm)

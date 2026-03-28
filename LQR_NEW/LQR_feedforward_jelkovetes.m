@@ -1,5 +1,5 @@
 %% DYNAMIC MODEL IN TERMS OF ERROR WITH RESPECT TO ROAD
-R = 20;  % radious of the road
+R = 10;  % radious of the road
 Caf = 222685.8 / 2; % Cornering stiffnes az első kerékhez
 Car = 136242.8 / 2; % Cornering stiffnes a hátsó kerékhez
 lf = 1236e-3; % Az autó tömegközéppontjától mért elülső tengelytáv
@@ -81,7 +81,7 @@ max_yaw_rate = Vx / R;
 % A bemeneti jel kiszámítása (Desired Yaw Rate)
 
 [u_vphides ,u_delta_ff] = generate8likePathExt(t,max_yaw_rate,m,lf,lr,Caf,Car,Vx,K(3));
-% u_delta_ff = zeros(size(t))
+ u_delta_ff = zeros(size(t))
 % u_reference = gensig("sin",5,30,0.01);
 u_reference = zeros(size(t)); % Nulla hiba referencia!!!
 
