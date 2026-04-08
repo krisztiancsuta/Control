@@ -10,10 +10,8 @@ b = 50;
 
 Nc = 4;
 Np = 30;
-Q = [10 0;...
-     0 1];
-Rw = [60 0;
-      0 0.00001];
+Q = diag([10,1,1]);
+Rw = diag([60, 0.00001]);
 
 % Diszkretizálási paraméterek
 Ts = 0.033; 
@@ -21,29 +19,37 @@ Ts = 0.033;
 vx_vector = 1 : 1 : 30; 
 num_models = length(vx_vector);
 
-%%
-A0 = [0 1 0                      0 0;...
+%% Model 
+% Av_const = constant matrix
+% Av_var = variable matrix
+Av_const = [0 1 0                      0 0;...
       0 0 (2*Caf+2*Car)/m        0 0;...
       0 0 0                      1 0;...
       0 0 (2*lf*Caf-2*lr*Car)/Iz 0 0;...
       0 0 0                      0 -b/m];
       
-A1 = [0 0                         0 0                                 0;...
+Av_var = [0 0                         0 0                                 0;...
       0 -(2*Caf+2*Car)/m          0 (-2*lf*Caf+2*lr*Car)/m            0;...
       0 0                         0 0                                 0;...
       0 -(2*lf*Caf-2*lr*Car)/Iz   0 -(2*lf*lf*Caf+2*lr*lr*Car)/Iz     0;...
       0 0                         0 0                                 0];
 
-Bc1 = [0; 2*Caf/m; 0; 2*lf*Caf/Iz; 0];
-Bc2 = [0; 0; 0; 0; 1/m];
+Bv1 = [0; 2*Caf/m; 0; 2*lf*Caf/Iz; 0]; % Steering
+Bv2 = [0; 0; 0; 0; 1/m];% Pedal force
 
 Bd1 = [0; -(2*lf*Caf-2*lr*Car)/m; 0; -(2*lf*lf*Caf+2*lr*lr*Car)/Iz; 0];
 Bd2 = [0; -1; 0; 0; 0];
 
 % Kimeneti mátrix
-C = [1 0 0 0 0;...
-     0 0 0 0 1];
-D = zeros(size(C, 1), 3); % 3 bemenet van: Bc1, Bc2, Bd
+Cv = [1 0 0 0 0;...
+      0 0 0 0 1];
+D = zeros(size(Cv, 1), 3); % 3 bemenet van: Bc1, Bc2, Bd
+
+%% Filter transfer function
+
+num_wf = [0.02633, 0.0238, 2.286, 0.2335, 0.02902];
+den_wf = [1, 2.527, 4.584, 2.993, 1.373];
+[Af, Bf, Cf, Df] = tf2ss(num_wf, den_wf);
 
 %% MODELLEK GENERÁLÁSA
 sys_c_models = cell(num_models, 1); % Folytonos modellek
@@ -59,14 +65,30 @@ for i = 1:num_models
     vx = vx_vector(i);
     
     % Mátrixok összeállítása az aktuális sebességre
-    A_current = A0 + (1/vx) * A1;
+    Av_current = Av_const + (1/vx) * Av_var;
     Bd_current = (1/vx) * Bd1 + vx * Bd2;
-    
     % Teljes bemeneti mátrix összerakása [Kormányzás, Erő, Zavarás]
-    B_current = [Bc1, Bc2, Bd_current];
+    Bv_current = [Bv1, Bv2, Bd_current];
     
+    % Add filter matrix
+    Ca  = Av_current(2, 1:5); % Gyorsulashoz a = Ca*xv + Da1*delta + Da2*desyawrate  
+    Da1 = Bv1(2, :); %Da1*delta
+    Da2 = Bd_current(2, :); %Da2*des_yawrate  
+
+    Ac_current = [ Av_current zeros(5,4);...
+                   Bf*Ca      Af ];
+    % [Steering; Force; Yawrate]
+    Bc_current = [Bv_current;...
+                  Bf*Da1 zeros(4,1) Bf*Da2];
+    
+    Cc_current = [Cv zeros(2,4);...
+                  Df*Ca Cf];
+    Dc_current = [zeros(2,3);...
+                  Df*Da1 0 Df*Da2];
+
+
     % Folytonos állapottér-modell létrehozása
-    sys_c_models{i} = ss(A_current, B_current, C, D);
+    sys_c_models{i} = ss(Ac_current, Bc_current, Cc_current, Dc_current);
     
     % Diszkretizálás Zero-Order Hold (ZOH) módszerrel
     sys_d_models{i} = c2d(sys_c_models{i}, Ts, 'zoh');
@@ -87,11 +109,12 @@ end
 t_vec = 0:Ts:35; 
 N_sim = length(t_vec);
 n_in = 2; % Bemenetek szama
-m1 = 2; % Kimenetek szama 
-n = 5; % allapotok szama
+m1 = 3; % Kimenetek szama [y; vx; filtered_accel]
+n = 9; % allapotok szama 5 vehicle + 4 filter states
 
-xm = [0; 0; 0; 0; 0.1]; 
-y = C * xm;
+xm = zeros(n, 1); 
+xm(5) = 0.1;
+y = zeros(m1,1);% Outputs: [y; vx; filtered_accel]
 u = [0; 0];
 Xf = [zeros(n, 1); y]; % A kiterjesztett állapot kezdeti értéke: [dx; y]
 
@@ -104,11 +127,11 @@ DU = zeros(N_sim, n_in);
 R = kron(eye(Nc), Rw);
 
 frekvencia = 0.05;
-ref_v = 9 + 2 * sign(sin(2 * pi * frekvencia * t_vec));
+ref_v = 10 + 0 * sign(sin(2 * pi * frekvencia * t_vec));
 
-r = generate8likePath(t_vec,10/10);
+r = generate8likePath(t_vec,10/5);
 %% Constraints
-u_max = [0.5;...% Max steering angle
+u_max = [0.3;...% Max steering angle
          10000];% Max pedal force
 u_min = -u_max;
 du_max = [0.08;... % Max rate of steering angle change
@@ -122,9 +145,11 @@ dUmin = repmat(du_min, Nc, 1);
 
 % Kimeneti korlátok definiálása (ha az út széle pl. +/- 1 méter)
 y_max = [1;... % Max letaral deviation [m]
-         1000]; % Max speed [m/s]
+         1000;...
+         10000]; % Max speed [m/s]
 y_min = [-1;... % Min letaral deviation [m]
-         -1000];
+         -1000;...
+         -10000];
 Ymax = repmat(y_max, Np, 1);
 Ymin = repmat(y_min, Np, 1);
 
@@ -142,14 +167,17 @@ n_y_constraints = 2 * (Np * m1);      % Ymin és Ymax (2 kimenet * Np időlépé
 
 total_constraints = n_u_constraints + n_du_constraints + n_y_constraints;
 lambda0 = zeros(total_constraints, 1);
+
+a_raw = zeros(N_sim, 1); % Tároló a nem szűrt gyorsulásnak
+
 %% SZIMULÁCIÓS CIKLUS
 for kk = 1:N_sim
-    v_current = y(2)
-    v_idx = round(v_current);
-    v_idx = max(1, min(30, v_idx)); % Ne tudjon túlcsordulni az index
-    
+    v_current = xm(5);
+    v_idx = max(1, min(30, round(v_current)));    
+
     % Mátrixok kinyerése a cellatömbökből a v_idx alapján
     Phi_Phi_k = Phi_Phi_models{v_idx};
+    Cc_current_k = sys_d_models{v_idx}.C;
     Phi_F_k   = Phi_F_models{v_idx};
     Phi_R_k   = Phi_R_models{v_idx};
     F_k = F_models{v_idx};
@@ -170,10 +198,10 @@ for kk = 1:N_sim
     gamma = [N1;N2;N3];
     
     % Az aktuális referencia vektor frissítése
-    ref_current = [0; ref_v(kk)];
-
+    
+    ref_current = [0;ref_v(kk);0];
     H = (Phi_Phi_k + R);
-    f = -(Phi_R_k * ref_current - Phi_F_k * Xf);
+    f = -(Phi_R_k *ref_current - Phi_F_k * Xf);
     
     [deltaU, iterations, lambda0, ~] = QPhild(H, f, M, gamma, lambda0);
 
@@ -197,7 +225,10 @@ for kk = 1:N_sim
     Bd_d_k = sys_d_models{v_idx}.B(:, 3);   % Zavaró bemenet 
   
     xm = Ad_k * xm + Bd_u_k * u + Bd_d_k *r(kk);
-    y = C * xm
+    y = Cc_current_k * xm;
+    
+    a_raw(kk) = sys_c_models{v_idx}.A(2,:) * xm + sys_c_models{v_idx}.B(2,1:2) * u + sys_c_models{v_idx}.B(2,3) * r(kk);
+
     
     % --- V. KITERJESZTETT ÁLLAPOT FRISSÍTÉSE A KÖVETKEZŐ LÉPÉSHEZ ---
     % Xf = [ \Delta x ; y ]
@@ -220,63 +251,55 @@ drawpath(t_vec(1:N_sim), Y(:, 1), ref_v(1), r(1:N_sim));
 %% Ábrázolás (Plotting Results)
 t = t_vec(1:N_sim); % Idővektor a plotokhoz
 
-figure('Name', 'MPC Járműdinamika Analízis', 'Position', [100, 100, 1200, 800]);
+% --- ÚJ ÁBRA: GYORSULÁS ANALÍZIS ---
+figure('Name', 'Gyorsulás és Kényelmi Analízis', 'Position', [200, 200, 800, 500]);
+plot(t, a_raw, 'Color', [0.7 0.7 0.7], 'LineWidth', 1, 'DisplayName', 'Nyers gyorsulás (Raw)');
+hold on;
+plot(t, Y(:, 3), 'r', 'LineWidth', 2, 'DisplayName', 'Szűrt gyorsulás (ISO/Filtered)');
+grid on;
+xlabel('Idő [s]');
+ylabel('Gyorsulás [m/s^2]');
+title('Laterális gyorsulás: Fizikai vs. Szűrt jel');
+legend('Location', 'northeast');
 
-% --- 1. ábra: Kimenetek (Y) és Referenciakövetés ---
-% Oldalirányú pozíció (y)
+% --- EREDETI ÁBRÁK FRISSÍTÉSE ---
+figure('Name', 'MPC Járműdinamika Analízis', 'Position', [100, 100, 1200, 900]);
+
+% Oldalirányú pozíció
 subplot(3, 2, 1);
 plot(t, Y(:, 1), 'b-', 'LineWidth', 2); hold on;
 plot(t, zeros(size(t)), 'r--', 'LineWidth', 1.5);
-xlabel('Idő [s]'); ylabel('y [m]');
-title('Oldalirányú pozíció követése');
-legend('Valós y', 'Referencia (0)');
+title('Laterális eltérés (y)'); grid on;
 
-% Hosszirányú sebesség (v_x)
+% Sebesség
 subplot(3, 2, 2);
 plot(t, Y(:, 2), 'g-', 'LineWidth', 2); hold on;
 plot(t, ref_v, 'r--', 'LineWidth', 1.5);
-grid on;
-xlabel('Idő [s]'); ylabel('v_x [m/s]');
-title('Hosszirányú sebesség követése');
-legend('Valós v_x', 'Referencia (10)');
+title('Hosszirányú sebesség (v_x)'); grid on;
 
-% --- 2. ábra: Bemenetek (U) és Korlátok ---
-% Kormányszög beavatkozás (\delta_f)
+% Kormányszög
 subplot(3, 2, 3);
 stairs(t, U(:, 1), 'k', 'LineWidth', 1.5); hold on;
-plot(t, u_max(1) * ones(size(t)), 'r:', 'LineWidth', 1.5);
-plot(t, u_min(1) * ones(size(t)), 'r:', 'LineWidth', 1.5);
-grid on;
-xlabel('Idő [s]'); ylabel('\delta_f [rad]');
-title('Kormányszög (u_1) és korlátai');
-legend('u_1', 'u_{max/min}');
+yline(u_max(1), 'r:', 'LineWidth', 1.5);
+yline(u_min(1), 'r:', 'LineWidth', 1.5);
+title('Kormányszög (\delta_f)'); grid on;
 
-% Hosszirányú erő beavatkozás (F_x)
+% Pedálerő
 subplot(3, 2, 4);
 stairs(t, U(:, 2), 'm', 'LineWidth', 1.5); hold on;
-plot(t, u_max(2) * ones(size(t)), 'r:', 'LineWidth', 1.5);
-plot(t, u_min(2) * ones(size(t)), 'r:', 'LineWidth', 1.5);
-grid on;
-xlabel('Idő [s]'); ylabel('F_x [N]');
-title('Hosszirányú erő (u_2) és korlátai');
-legend('u_2', 'u_{max/min}');
+yline(u_max(2), 'r:', 'LineWidth', 1.5);
+yline(u_min(2), 'r:', 'LineWidth', 1.5);
+title('Hajtó/Fékező erő (F_x)'); grid on;
 
-% --- 3. ábra: Zavarójel profilja ---
+% Zavarójel (Út görbülete/Yaw-rate ref)
 subplot(3, 2, 5);
 plot(t, r(1:N_sim), 'c-', 'LineWidth', 1.5);
-grid on;
-xlabel('Idő [s]'); ylabel('Zavarás amplitúdó');
-title('Alkalmazott zavarójel (Path profil)');
-legend('r(t)');
+title('Zavaró jel (r) - Útprofil'); grid on;
 
-% --- 4. ábra: Állapotváltozók növekményei (\Delta x) ---
+% Állapotváltozók növekményei
 subplot(3, 2, 6);
-plot(t, delta_x(:, 1), 'b', 'LineWidth', 1); hold on;
-plot(t, delta_x(:, 3), 'r', 'LineWidth', 1);
-plot(t, delta_x(:, 5), 'k', 'LineWidth', 1);
-grid on;
-xlabel('Idő [s]'); ylabel('\Delta x');
-title('Főbb állapotváltozók növekményei');
+plot(t, delta_x(:, 1), 'b', t, delta_x(:, 3), 'r', t, delta_x(:, 5), 'k');
+title('Állapotváltozók változása (\Delta x)'); grid on;
 legend('\Delta y', '\Delta \psi', '\Delta v_x');
 
 sgtitle('LPV-MPC Járműirányítási Szimuláció Eredményei');

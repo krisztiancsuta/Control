@@ -49,9 +49,9 @@ end
 
 
 % Φ'*Φ,
-Phi_Phi = Phi'*Phi;
+%Phi_Phi = Phi'*Phi;
 % Φ'*F 
-Phi_F = Phi'*F;
+%Phi_F = Phi'*F;
 % Φ'*Rs
 Rs = ones(Np, 1);
 Phi_Rs = Phi'*Rs;
@@ -60,11 +60,13 @@ Phi_Rs = Phi'*Rs;
 
 % ΔU = inv((Φ'Φ))(Φ'*Rs− Φ'*F*x(ki)) 
 % Mivel rw = 0 
-dU = inv(Phi_Phi)*(Phi_Rs-Phi_F*[0.1; 0.2])
+%dU = inv(Phi_Phi)*(Phi_Rs-Phi_F*[0.1; 0.2]);
 
 % Mivel rw = 10
 rw = 10;
 R = diag([rw rw rw rw]);
-dU = inv(Phi_Phi + R)*(Phi_Rs-Phi_F*[0.1; 0.2])
+%dU = inv(Phi_Phi + R)*(Phi_Rs-Phi_F*[0.1; 0.2]);
 
+
+[Phi_Phi,Phi_F,Phi_R,A_e, B_e,C_e,F,Phi]= mpcgain(a,b,c,4,10)
 %% Todo make it as a function

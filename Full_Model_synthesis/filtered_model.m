@@ -10,10 +10,12 @@ b = 50;
 
 Nc = 4;
 Np = 30;
-Q = [10 0;...
-     0 1];
-Rw = [60 0;
-      0 0.00001];
+Q = [10 0 0;...
+     0 1 0;
+     0 0 1];
+Rw = [60 0 0;
+      0 0.00001 0;...
+      0 0 1];
 
 % Diszkretizálási paraméterek
 Ts = 0.033; 
@@ -104,14 +106,14 @@ DU = zeros(N_sim, n_in);
 R = kron(eye(Nc), Rw);
 
 frekvencia = 0.05;
-ref_v = 9 + 2 * sign(sin(2 * pi * frekvencia * t_vec));
+ref_v = 10 + 2 * sign(sin(2 * pi * frekvencia * t_vec));
 
 r = generate8likePath(t_vec,10/10);
 %% Constraints
 u_max = [0.5;...% Max steering angle
          10000];% Max pedal force
 u_min = -u_max;
-du_max = [0.08;... % Max rate of steering angle change
+du_max = [0.02;... % Max rate of steering angle change
           2000];    % Max rate of pedal force change
 du_min = -du_max; 
 
@@ -122,9 +124,9 @@ dUmin = repmat(du_min, Nc, 1);
 
 % Kimeneti korlátok definiálása (ha az út széle pl. +/- 1 méter)
 y_max = [1;... % Max letaral deviation [m]
-         1000]; % Max speed [m/s]
+         20]; % Max speed [m/s]
 y_min = [-1;... % Min letaral deviation [m]
-         -1000];
+         0.1];
 Ymax = repmat(y_max, Np, 1);
 Ymin = repmat(y_min, Np, 1);
 

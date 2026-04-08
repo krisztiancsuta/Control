@@ -38,6 +38,7 @@ B2 = [0;...
 
 C = [1 0 0 0];
 
+
 c_ss = ss(A,[B1 B2],C,0);
 
 %% Discretise state space model
