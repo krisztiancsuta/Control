@@ -10,7 +10,7 @@ b = 50;
 
 Nc = 10;
 Np = 30;
-Q = diag([5,1,1000000]);
+Q = diag([5,1,10]);
 Rw = diag([1, 0.00001]);
 
 % Diszkretizálási paraméterek
@@ -88,10 +88,10 @@ for i = 1:num_models
 
 
     % Folytonos állapottér-modell létrehozása
-    sys_c_models{i} = ss(Ac_current, Bc_current, Cc_current, Dc_current);
+    sys_c_models{i} = ss(Ac_current, Bc_current, Cc_current, Dc_current)
     
     % Diszkretizálás Zero-Order Hold (ZOH) módszerrel
-    sys_d_models{i} = c2d(sys_c_models{i}, Ts, 'zoh');
+    sys_d_models{i} = c2d(sys_c_models{i}, Ts, 'zoh')
     
     % mpc gian szamolasa minden sebessegre.
     [Phi_Phi,Phi_F,Phi_R,A_e,B_e,~,F,Phi]=mpcgain(sys_d_models{i}.A,sys_d_models{i}.B(:,1:2),sys_d_models{i}.C,Nc,Np,Q);
