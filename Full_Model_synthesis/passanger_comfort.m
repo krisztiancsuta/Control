@@ -8,15 +8,15 @@ m = 2300; % Az autó tömege
 Iz = 2873; % Az autó tehetetlenségi nyomatéka
 b = 50;
 
-Nc = 4;
+Nc = 10;
 Np = 30;
-Q = diag([10,1,1]);
-Rw = diag([60, 0.00001]);
+Q = diag([5,1,1000000]);
+Rw = diag([1, 0.00001]);
 
 % Diszkretizálási paraméterek
 Ts = 0.033; 
 
-vx_vector = 1 : 1 : 30; 
+vx_vector = 1 : 0.1 : 30; 
 num_models = length(vx_vector);
 
 %% Model 
@@ -28,7 +28,7 @@ Av_const = [0 1 0                      0 0;...
       0 0 (2*lf*Caf-2*lr*Car)/Iz 0 0;...
       0 0 0                      0 -b/m];
       
-Av_var = [0 0                         0 0                                 0;...
+Av_var = [0 0                         0 0                             0;...
       0 -(2*Caf+2*Car)/m          0 (-2*lf*Caf+2*lr*Car)/m            0;...
       0 0                         0 0                                 0;...
       0 -(2*lf*Caf-2*lr*Car)/Iz   0 -(2*lf*lf*Caf+2*lr*lr*Car)/Iz     0;...
@@ -73,7 +73,7 @@ for i = 1:num_models
     % Add filter matrix
     Ca  = Av_current(2, 1:5); % Gyorsulashoz a = Ca*xv + Da1*delta + Da2*desyawrate  
     Da1 = Bv1(2, :); %Da1*delta
-    Da2 = Bd_current(2, :); %Da2*des_yawrate  
+    Da2 = Bd_current(2,:); %Da2*des_yawrate  
 
     Ac_current = [ Av_current zeros(5,4);...
                    Bf*Ca      Af ];
@@ -127,14 +127,14 @@ DU = zeros(N_sim, n_in);
 R = kron(eye(Nc), Rw);
 
 frekvencia = 0.05;
-ref_v = 10 + 0 * sign(sin(2 * pi * frekvencia * t_vec));
+ref_v = 8 + 0 * sign(sin(2 * pi * frekvencia * t_vec));
 
-r = generate8likePath(t_vec,10/5);
+r = generate8likePath(t_vec,8/30);
 %% Constraints
-u_max = [0.3;...% Max steering angle
+u_max = [0.5;...% Max steering angle
          10000];% Max pedal force
 u_min = -u_max;
-du_max = [0.08;... % Max rate of steering angle change
+du_max = [0.1;... % Max rate of steering angle change
           2000];    % Max rate of pedal force change
 du_min = -du_max; 
 
@@ -146,10 +146,10 @@ dUmin = repmat(du_min, Nc, 1);
 % Kimeneti korlátok definiálása (ha az út széle pl. +/- 1 méter)
 y_max = [1;... % Max letaral deviation [m]
          1000;...
-         10000]; % Max speed [m/s]
+         1000000]; % Max speed [m/s]
 y_min = [-1;... % Min letaral deviation [m]
          -1000;...
-         -10000];
+         -1000000];
 Ymax = repmat(y_max, Np, 1);
 Ymin = repmat(y_min, Np, 1);
 
@@ -172,9 +172,15 @@ a_raw = zeros(N_sim, 1); % Tároló a nem szűrt gyorsulásnak
 
 %% SZIMULÁCIÓS CIKLUS
 for kk = 1:N_sim
-    v_current = xm(5);
-    v_idx = max(1, min(30, round(v_current)));    
 
+    v_current = xm(5);
+    v_min = vx_vector(1);
+    v_step = 0.1; % This must match your vx_vector resolution
+    
+    v_idx = round((v_current - v_min) / v_step) + 1;
+    
+    % Constrain index to stay within the bounds of the cell arrays
+    v_idx = max(1, min(num_models, v_idx));
     % Mátrixok kinyerése a cellatömbökből a v_idx alapján
     Phi_Phi_k = Phi_Phi_models{v_idx};
     Cc_current_k = sys_d_models{v_idx}.C;
